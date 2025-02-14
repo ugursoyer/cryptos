@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= title %></title>
+  <link rel="stylesheet" href="/style.css" />
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chart.js DataLabels Plugin -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+</head>
+<body>
+  <header>
+    <div class="container header-container">
+      <h2>Cryptos</h2>
+      <% if (user) { %>
+        <nav>
+          <a href="/logout" class="logout-button">Çıkış</a>
+        </nav>
+      <% } %>
+    </div>
+  </header>
+  <main class="container">

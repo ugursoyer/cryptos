@@ -1,0 +1,12 @@
+<%- include('partials/header', { title: 'Giriş Yap', user: null }) %>
+<div class="login-container">
+  <% if (error) { %>
+    <p class="error"><%= error %></p>
+  <% } %>
+  <form action="/login" method="POST">
+    <input type="text" name="username" id="username" placeholder="Kullanıcı" required>
+    <input type="password" name="password" id="password" placeholder="Şifre" required>
+    <button type="submit">Giriş</button>
+  </form>
+</div>
+<%- include('partials/footer') %>
