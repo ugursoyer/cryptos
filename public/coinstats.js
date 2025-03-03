@@ -4,8 +4,104 @@
 Chart.register(ChartDataLabels);
 
 let currentSource = "coincap"; // Varsayılan olarak CoinCap seçili
-let socket = null;
 let liveCoins = []; // /api/livecoins'den alınan coin verileri
+let currentDate = ''; // Güncel tarih bilgisi
+let top50Coins = []; // En iyi 50 coinin listesi
+
+// Socket.io bağlantısı
+const socket = io();
+
+// Tarih güncellendiğinde sayfayı yenile
+socket.on('dateUpdated', (data) => {
+  console.log('Yeni tarih alındı:', data.date);
+  // Sayfayı yenile
+  window.location.reload();
+});
+
+// Tema değiştirme işlevselliği
+function setupThemeToggle() {
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  const themeIcon = themeToggleBtn.querySelector('i');
+  
+  // Sayfa yüklendiğinde localStorage'dan tema tercihini al
+  const savedTheme = localStorage.getItem('theme');
+  
+  // Eğer kaydedilmiş bir tema varsa uygula
+  if (savedTheme === 'dark') {
+    document.body.classList.add('dark-theme');
+    themeIcon.classList.remove('fa-moon');
+    themeIcon.classList.add('fa-sun');
+  }
+  
+  // Tema değiştirme düğmesine tıklama olayı ekle
+  themeToggleBtn.addEventListener('click', () => {
+    // Temayı değiştir
+    document.body.classList.toggle('dark-theme');
+    
+    // İkonu güncelle
+    if (document.body.classList.contains('dark-theme')) {
+      themeIcon.classList.remove('fa-moon');
+      themeIcon.classList.add('fa-sun');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      themeIcon.classList.remove('fa-sun');
+      themeIcon.classList.add('fa-moon');
+      localStorage.setItem('theme', 'light');
+    }
+    
+    // Grafik renklerini güncelle
+    updateChartColors();
+  });
+}
+
+// Grafik renklerini tema değişikliğine göre güncelle
+function updateChartColors() {
+  const isDarkTheme = document.body.classList.contains('dark-theme');
+  
+  if (mainChart) {
+    // Etiket renklerini güncelle
+    mainChart.options.plugins.datalabels.labels.coinName.color = isDarkTheme ? '#f0f0f0' : 'rgb(38, 38, 38)';
+    
+    // Grafik güncelle
+    mainChart.update();
+  }
+}
+
+// Sayfa başlığını güncelleyen fonksiyon
+async function updatePageTitle() {
+  try {
+    const response = await fetch('/api/currentdate');
+    const data = await response.json();
+    currentDate = data.date;
+    
+    // Tarihi dd.MM.yyyy formatına dönüştür
+    const dateParts = currentDate.split('-');
+    const formattedDate = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
+    
+    // Başlık elementini güncelle
+    const titleElement = document.getElementById('pageTitle');
+    if (titleElement) {
+      titleElement.textContent = `Günün En Çok Yükselen 50 Coini (${formattedDate})`;
+    } else {
+      // Eğer element yoksa oluştur
+      const header = document.createElement('h1');
+      header.id = 'pageTitle';
+      header.textContent = `Günün En Çok Yükselen 50 Coini (${formattedDate})`;
+      header.style.textAlign = 'center';
+      header.style.margin = '20px 0';
+      
+      // Sayfanın başına ekle
+      const container = document.querySelector('.container');
+      if (container) {
+        container.insertBefore(header, container.firstChild);
+      } else {
+        document.body.insertBefore(header, document.body.firstChild);
+      }
+    }
+  } catch (error) {
+    console.error("Tarih bilgisi alınamadı:", error);
+  }
+}
 
 // --- Main Chart: Dikey Bar Chart ---
 const ctxMain = document.getElementById('barChart').getContext('2d');
@@ -66,10 +162,9 @@ var mainChart = new Chart(ctxMain, {
             const pair = "USDT";
             return [
               `${coinName} (${pair})`,
-              `Kapanış Fiyatı: $${coin.prevClose.toFixed(6)}`,
+              `Başlangıç Fiyatı: $${coin.openPrice.toFixed(6)}`,
               `Güncel Fiyat: $${coin.usd.toFixed(6)}`,
-              `Değişim: ${coin.change.toFixed(2)}%`,
-              `Kapanış Zamanı: ${new Date(coin.closeTime).toLocaleString()}`
+              `Değişim: ${coin.change.toFixed(2)}%`
             ];
           }
         }
@@ -92,19 +187,60 @@ var mainChart = new Chart(ctxMain, {
   }
 });
 
-async function updateMainChart() {
+// İlk yüklemede en iyi 50 coini al
+async function loadInitialTop50() {
   try {
     const response = await fetch('/api/livecoins');
     const coins = await response.json();
-    // Azalan sırada sıralama (endpoint zaten sıralı olsa bile)
+    // Azalan sırada sıralama
     coins.sort((a, b) => b.change - a.change);
+    // İlk 50 coini al
+    top50Coins = coins.slice(0, 50);
+    // İlk grafiği çiz
+    updateMainChart();
+  } catch (error) {
+    console.error("Error loading initial top 50:", error);
+  }
+}
+
+async function updateMainChart() {
+  try {
+    const response = await fetch('/api/livecoins');
+    const allCoins = await response.json();
+    
+    // Sadece top 50'deki coinlerin güncel verilerini al
+    const updatedTop50 = top50Coins.map(topCoin => {
+      const currentCoin = allCoins.find(c => c.symbol === topCoin.symbol);
+      // Eğer coin bulunamazsa veya undefined ise, güncelleme yapma
+      if (!currentCoin) {
+        console.log(`${topCoin.symbol} için güncel veri bulunamadı, eski veri kullanılıyor`);
+        return topCoin;
+      }
+      
+      // Coin bulundu ama değerleri eksikse, eski veriyi kullan
+      if (currentCoin.usd === undefined || currentCoin.change === undefined) {
+        console.log(`${topCoin.symbol} için eksik veri, eski veri kullanılıyor`);
+        return topCoin;
+      }
+      
+      return currentCoin;
+    });
+    
+    // Değişim oranına göre sırala
+    updatedTop50.sort((a, b) => b.change - a.change);
+    
+    // Veri setini güncelle
     const labels = [];
     const dataArray = [];
     const bgColors = [];
     const borderColors = [];
     
-    coins.forEach(coin => {
-      // Mum altında hiçbir etiket göstermiyoruz
+    updatedTop50.forEach(coin => {
+      if (!coin || coin.change === undefined) {
+        console.error(`Hatalı coin verisi:`, coin);
+        return;
+      }
+      
       labels.push('');
       dataArray.push(coin.change);
       if (coin.change >= 0) {
@@ -120,12 +256,20 @@ async function updateMainChart() {
     mainChart.data.datasets[0].data = dataArray;
     mainChart.data.datasets[0].backgroundColor = bgColors;
     mainChart.data.datasets[0].borderColor = borderColors;
-    // Tooltip'te kullanılmak üzere tüm coin verilerini sakla
-    mainChart.data.datasets[0].customData = coins;
+    mainChart.data.datasets[0].customData = updatedTop50;
     mainChart.update();
   } catch (error) {
     console.error("Error updating main chart:", error);
   }
 }
+
+// Sayfa yüklendiğinde
+document.addEventListener('DOMContentLoaded', () => {
+  updatePageTitle();
+  setupThemeToggle();
+  updateChartColors();
+  loadInitialTop50(); // İlk 50 coini yükle
+});
+
+// 5 saniyede bir güncelle
 setInterval(updateMainChart, 5000);
-updateMainChart();

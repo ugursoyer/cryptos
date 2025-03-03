@@ -1,4 +1,4 @@
-<%- include('partials/header', { title: 'Giriş Yap', user: null }) %>
+<%- include('partials/header', { title: 'Cryptos', user: null }) %>
 <div class="login-container">
   <% if (error) { %>
     <p class="error"><%= error %></p>
@@ -9,4 +9,6 @@
     <button type="submit">Giriş</button>
   </form>
 </div>
+<!-- Login sayfası için tema değiştirme işlevselliği -->
+<script src="/login.js"></script>
 <%- include('partials/footer') %>

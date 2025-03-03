@@ -1,7 +1,9 @@
-<%- include('partials/header', { title: 'Coin Stats', user: user }) %>
+<%- include('partials/header', { title: 'Cryptos', user: user }) %>
   <section class="coinstats">
-    <h1>Son Kapanıştan Bu Yana En Çok Yükselen 50 Coin</h1>
-     <canvas id="barChart"></canvas>
+    <h1 id="pageTitle">Günün En Çok Yükselen 50 Coini</h1>
+    <canvas id="barChart"></canvas>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
     <script src="/coinstats.js"></script>
   </section>
 <%- include('partials/footer') %>
