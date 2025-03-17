@@ -1,9 +1,69 @@
 <%- include('partials/header', { title: 'Cryptos', user: user }) %>
   <section class="coinstats">
-    <h1 id="pageTitle">Günün En Çok Yükselen 50 Coini</h1>
+    <!-- Başlık ve Buton Konteyner (Tablo Yapısı) -->
+    <div class="title-button-table">
+      <div class="title-cell">
+        <h1 id="pageTitle"><%= typeof pageTitle !== 'undefined' ? pageTitle : '' %></h1>
+      </div>
+      <div class="button-cell">
+        <div class="update-button-container">
+          <button id="updatePrices" class="update-button">
+            <i class="fas fa-sync-alt"></i> Güncel Fiyatları Kullan
+          </button>
+        </div>
+      </div>
+    </div>
+    
     <canvas id="barChart"></canvas>
+    
+    <!-- Bildirim Paneli -->
+    <div id="notification-panel" class="notification-panel" style="display: none;">
+      <div class="notification-content">
+        <div class="notification-icon">
+          <i class="fas fa-spinner fa-spin"></i>
+        </div>
+        <div class="notification-message">
+          Fiyatlar güncelleniyor...
+        </div>
+        <div class="notification-details">
+          Lütfen bekleyin, işlem devam ediyor...
+        </div>
+      </div>
+    </div>
+    
+    <!-- Kontrol Paneli -->
+    <div class="control-panel">
+      <!-- Toggle Grubu -->
+      <div class="toggle-group">
+        <div class="toggle-container">
+          <label class="toggle">
+            <input type="checkbox" id="positiveOnly">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Sadece pozitif değerleri göster</span>
+        </div>
+        
+        <div class="toggle-container">
+          <label class="toggle">
+            <input type="checkbox" id="freezeOrder">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Sıralamayı dondur</span>
+        </div>
+        
+        <div class="toggle-container">
+          <label class="toggle">
+            <input type="checkbox" id="showTop5">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">En yüksek 5 coini göster</span>
+        </div>
+      </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
     <script src="/coinstats.js"></script>
   </section>
 <%- include('partials/footer') %>
+
