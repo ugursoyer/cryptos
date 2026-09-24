@@ -1,10 +1,14 @@
 {
-  "name": "ugur",
-  "version": "1.0.0",
-  "main": "index.js",
+  "name": "cryptos",
+  "version": "2.0.0",
+  "description": "Binance USDT çiftlerinin referans anından bu yana değişimini canlı gösteren takip uygulaması",
+  "main": "src/server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node src/server.js",
+    "fiyat": "node src/price_updater.js",
+    "kullanici": "node src/scripts/kullanici_ekle.js",
+    "sifre-hashle": "node src/scripts/hash_users.js",
+    "telegram": "node src/scripts/telegram_ayarla.js"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +23,5 @@
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
     "ws": "^8.18.0"
-  },
-  "description": ""
+  }
 }

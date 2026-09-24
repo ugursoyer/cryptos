@@ -1,31 +1,37 @@
-# Dependencies
+# Bağımlılıklar
 node_modules/
 npm-debug.log
 yarn-debug.log
 yarn-error.log
 
-# Environment variables
+# GİZLİ BİLGİLER - asla commit edilmez
+# Anahtarlar (.env), kullanıcı hesapları (users.json) secrets/ içinde durur.
+# Klasörün kendisi değil İÇERİĞİ yok sayılır; böylece açıklama dosyası git'te kalır.
+# Örnekler: deploy/ornek.env ve deploy/ornek-users.json
+secrets/*
+!secrets/README.md
 .env
+users.json
+users.json.bak
 
-# Database
+# Veritabanı
+data/
 *.db
 *.sqlite
 *.sqlite3
 
-# Logs
-*.log
+# Loglar
 logs/
+*.log
 
-# IDE
+# Kurulum paketi
+dist/
+build/
+
+# Düzenleyici / işletim sistemi
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Build
-dist/
-build/ 

@@ -1,0 +1,145 @@
+<%- include('partials/header', { title: 'Cryptos', user: user }) %>
+  <section class="coinstats">
+    <!-- Başlık ve Buton Konteyner (Tablo Yapısı) -->
+    <div class="title-button-table">
+      <div class="title-cell">
+        <h1 id="pageTitle"><%= typeof pageTitle !== 'undefined' ? pageTitle : '' %></h1>
+      </div>
+      <div class="button-cell">
+        <div class="update-button-container">
+          <button id="updatePrices" class="update-button">
+            <i class="fas fa-sync-alt"></i> Güncel Fiyatları Kullan
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Piyasa durumu: BTC'nin değişimi ve verinin tazeliği -->
+    <div class="market-bar">
+      <span id="btcStatus" class="btc-status">BTC: —</span>
+      <span id="dataStatus" class="data-status">Veri bekleniyor…</span>
+    </div>
+
+    <!-- Renk açıklaması -->
+    <div class="chart-legend">
+      <span><i class="legend-box legend-yukselis"></i>Yükselişte</span>
+      <span title="Tepesinden %5'ten fazla düşmüş, kazancının %40'ından fazlasını geri vermiş ya da son 15 dakikada %1'den fazla gerilemiş"><i class="legend-box legend-zayif"></i>Zayıflıyor</span>
+      <span><i class="legend-box legend-negatif"></i>Negatif</span>
+      <span><i class="legend-box legend-tepe"></i>Referanstan beri tepe</span>
+      <span><i class="legend-line"></i>BTC seviyesi</span>
+    </div>
+
+    <!-- Tetiklenen alarmlar burada listelenir -->
+    <div id="alarmBar" class="alarm-bar" style="display: none;"></div>
+
+    <div id="emptyMessage" class="empty-message" style="display: none;"></div>
+
+    <canvas id="barChart"></canvas>
+    
+    <!-- Bildirim Paneli -->
+    <div id="notification-panel" class="notification-panel" style="display: none;">
+      <div class="notification-content">
+        <div class="notification-icon">
+          <i class="fas fa-spinner fa-spin"></i>
+        </div>
+        <div class="notification-message">
+          Fiyatlar güncelleniyor...
+        </div>
+        <div class="notification-details">
+          Lütfen bekleyin, işlem devam ediyor...
+        </div>
+      </div>
+    </div>
+    
+    <!-- Kontrol Paneli -->
+    <div class="control-panel">
+      <!-- Toggle Grubu -->
+      <div class="toggle-group">
+        <div class="toggle-container">
+          <label class="toggle">
+            <input type="checkbox" id="positiveOnly">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Sadece pozitif değerleri göster</span>
+        </div>
+        
+        <div class="toggle-container">
+          <label class="toggle">
+            <input type="checkbox" id="freezeOrder">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">Sıralamayı dondur</span>
+        </div>
+        
+        <div class="toggle-container">
+          <label class="toggle">
+            <input type="checkbox" id="showTop5">
+            <span class="slider"></span>
+          </label>
+          <span class="toggle-label">En yüksek 5 coini göster</span>
+        </div>
+
+        <div class="toggle-container">
+          <label class="volume-filter">
+            <span class="toggle-label">En az 24s hacim</span>
+            <select id="minVolume">
+              <option value="0">Tümü</option>
+              <option value="1000000">1 milyon $</option>
+              <option value="5000000">5 milyon $</option>
+              <option value="10000000">10 milyon $</option>
+              <option value="50000000">50 milyon $</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alarmlar -->
+    <div class="control-panel alarm-panel">
+      <!-- Her grup kendi içinde bölünmez; dar ekranda etiket kutusundan ayrılmaz -->
+      <div class="alarm-satir">
+        <span class="alarm-grup">
+          <label class="toggle">
+            <input type="checkbox" id="genelAlarm">
+            <span class="slider"></span>
+          </label>
+          <span class="alarm-metin">Herhangi bir coin</span>
+          <input type="number" id="genelEsik" class="alarm-sayi" min="0.1" max="500" step="0.5" value="10">
+          <span class="alarm-metin">% ve üzeri yükselirse uyar</span>
+        </span>
+
+        <span class="alarm-grup">
+          <label class="toggle">
+            <input type="checkbox" id="alarmSesi" checked>
+            <span class="slider"></span>
+          </label>
+          <span class="alarm-metin">Sesli uyarı</span>
+          <button type="button" id="sesTest" class="update-button alarm-dugme">Sesi dene</button>
+        </span>
+      </div>
+
+      <div class="alarm-satir">
+        <span class="alarm-grup">
+          <span class="alarm-metin">Coin alarmı:</span>
+          <input type="text" id="alarmCoin" class="alarm-coin" list="coinListesi" placeholder="ör. SOL" autocomplete="off">
+          <datalist id="coinListesi"></datalist>
+        </span>
+        <span class="alarm-grup">
+          <select id="alarmYon" class="alarm-secim">
+            <option value="yukari">yükselirse</option>
+            <option value="asagi">düşerse</option>
+          </select>
+          <input type="number" id="alarmEsik" class="alarm-sayi" min="-100" max="500" step="0.5" value="5">
+          <span class="alarm-metin">%</span>
+        </span>
+        <button type="button" id="alarmEkle" class="update-button alarm-dugme">Alarm ekle</button>
+      </div>
+
+      <div id="alarmListesi" class="alarm-listesi"></div>
+    </div>
+
+    <!-- Chart.js ve datalabels header.ejs'de yükleniyor -->
+    <script src="/coinstats.js"></script>
+  </section>
+<%- include('partials/footer') %>
+

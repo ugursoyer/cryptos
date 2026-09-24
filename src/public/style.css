@@ -273,21 +273,26 @@ body.dark-theme #barChart {
 
 /* Mobil görünüm için header düzenlemeleri */
 @media (max-width: 768px) {
+  /* Tek satırda kalsın: başlık solda, tema ve çıkış sağda.
+     Alt alta dizilince üst şerit gereksiz yer kaplıyordu. */
   .header-container {
-    flex-direction: column;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
     padding: 0 10px;
   }
-  
+
   header h2 {
     font-size: 18px;
-    margin-bottom: 10px;
+    margin: 0;
+    text-align: left;
   }
-  
+
   .header-container nav {
     position: static;
-    width: 100%;
-    justify-content: center;
-    margin-top: 5px;
+    width: auto;
+    justify-content: flex-end;
+    margin-top: 0;
   }
   
   .theme-toggle-button {
@@ -709,6 +714,309 @@ body.dark-theme .notification-icon i.fa-spinner {
   color: #3498db;
 }
 
+/* Piyasa durumu çubuğu */
+.market-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 12px 24px;
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.btc-status b.pozitif { color: #00a060; }
+.btc-status b.negatif { color: #d93636; }
+
+.data-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.data-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #999;
+}
+
+.data-status.durum-yesil::before { background: #00b16a; }
+.data-status.durum-sari::before { background: #f5a623; }
+.data-status.durum-kirmizi { background: rgba(235, 54, 54, 0.12); color: #c62828; font-weight: 600; }
+.data-status.durum-kirmizi::before { background: #eb3636; }
+
+body.dark-theme .data-status { background: rgba(255, 255, 255, 0.08); }
+body.dark-theme .data-status.durum-kirmizi { background: rgba(235, 54, 54, 0.25); color: #ff8a8a; }
+body.dark-theme .btc-status b.pozitif { color: #3ddc97; }
+body.dark-theme .btc-status b.negatif { color: #ff6b6b; }
+
+/* Renk açıklaması */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  font-size: 12px;
+  color: #666;
+}
+
+body.dark-theme .chart-legend { color: #bbb; }
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-box {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legend-yukselis { background: rgba(0, 177, 106, 0.7); }
+.legend-zayif { background: rgba(245, 166, 35, 0.75); }
+.legend-negatif { background: rgba(235, 54, 54, 0.6); }
+.legend-tepe { background: rgba(128, 128, 128, 0.25); border: 1px solid rgba(128, 128, 128, 0.4); }
+
+.legend-line {
+  display: inline-block;
+  width: 18px;
+  border-top: 2px dashed rgba(74, 144, 226, 0.9);
+}
+
+.empty-message {
+  text-align: center;
+  margin-top: 30px;
+  padding: 12px;
+  border-radius: 5px;
+  background: rgba(245, 166, 35, 0.12);
+}
+
+/* Hacim filtresi */
+.volume-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.volume-filter select {
+  padding: 4px 8px;
+  font-size: 14px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #333;
+}
+
+body.dark-theme .volume-filter select {
+  background: #3d3d3d;
+  color: #f0f0f0;
+  border-color: #555;
+}
+
+/* Alarm paneli */
+.alarm-panel {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.alarm-satir {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+}
+
+/* Etiket + kutu birlikte kalsın; satır ancak gruplar arasından bölünsün */
+.alarm-grup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* .toggle-label'daki kırpma burada istenmiyor ("Coin alarmı:" -> "Coin ..." oluyordu) */
+.alarm-metin {
+  font-size: 14px;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.alarm-dugme {
+  min-width: 0;
+  padding: 6px 12px;
+}
+
+.alarm-sayi {
+  width: 70px;
+  padding: 4px 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+}
+
+.alarm-coin {
+  width: 110px;
+  padding: 4px 8px;
+  font-size: 14px;
+  text-transform: uppercase;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+}
+
+.alarm-secim {
+  padding: 4px 8px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  color: #333;
+}
+
+body.dark-theme .alarm-sayi,
+body.dark-theme .alarm-coin,
+body.dark-theme .alarm-secim {
+  background: #3d3d3d;
+  color: #f0f0f0;
+  border-color: #555;
+}
+
+.alarm-listesi {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.alarm-bos {
+  font-size: 13px;
+  color: #888;
+}
+
+.alarm-etiket {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border-radius: 14px;
+  font-size: 13px;
+  background: rgba(74, 144, 226, 0.12);
+  border: 1px solid rgba(74, 144, 226, 0.4);
+}
+
+body.dark-theme .alarm-etiket {
+  background: rgba(52, 152, 219, 0.2);
+  border-color: rgba(52, 152, 219, 0.5);
+}
+
+.alarm-sil {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+
+.alarm-sil:hover { opacity: 1; }
+
+/* Tetiklenen alarm uyarıları: sabit köşe bildirimi.
+   Sayfa akışında olsaydı her uyarıda grafik aşağı kayardı. */
+.alarm-bar {
+  display: none;
+  position: fixed;
+  top: 76px;
+  right: 16px;
+  z-index: 900;
+  max-width: 380px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: rgba(232, 250, 242, 0.97);
+  border: 1px solid rgba(0, 177, 106, 0.5);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
+  animation: alarmGir 0.3s ease;
+}
+
+.alarm-zil {
+  font-size: 16px;
+  align-self: flex-start;
+}
+
+.alarm-parca {
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alarm-saat { opacity: 0.6; font-size: 12px; }
+
+.alarm-bar .alarm-sil {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+}
+
+body.dark-theme .alarm-bar {
+  background: rgba(24, 56, 44, 0.97);
+  border-color: rgba(0, 177, 106, 0.6);
+  color: #eaf7f1;
+}
+
+body.dark-theme .alarm-parca { background: rgba(0, 0, 0, 0.35); }
+
+@media (max-width: 768px) {
+  .alarm-bar {
+    top: auto;
+    bottom: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
+  }
+
+  /* Dar ekranda kontrol paneli her öğeyi tam genişliğe zorluyor;
+     alarm panelinde gruplar bir arada ve sola dayalı kalmalı */
+  .alarm-panel .alarm-satir {
+    justify-content: flex-start;
+  }
+
+  .alarm-panel .update-button {
+    width: auto;
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+
+  .alarm-coin { width: 90px; }
+  .alarm-sayi { width: 64px; }
+}
+
+@keyframes alarmGir {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* Başlık ve Buton Tablo Stilleri */
 .title-button-table {
   display: table;
@@ -740,9 +1048,11 @@ body.dark-theme .notification-icon i.fa-spinner {
   font-size: 24px;
   font-weight: 600;
   color: #3A3A3A;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Kırpmak yerine alt satıra sarsın: orta genişliklerde (ör. 820px tablet)
+     başlık üç nokta ile kesiliyordu */
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.25;
 }
 
 body.dark-theme .title-cell h1 {
@@ -774,13 +1084,24 @@ body.dark-theme .title-cell h1 {
     padding-right: 0;
   }
 
+  /* Dar ekranda başlık kırpılmasın, gerekirse alt satıra sarsın */
   .title-cell h1 {
-    font-size: 20px;
+    font-size: 18px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.3;
+  }
+
+  .title-cell, .button-cell {
+    margin-bottom: 6px;
   }
 
   .button-cell .update-button {
-    width: 100%;
-    max-width: 200px;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+    padding: 7px 14px;
     margin: 0 auto;
   }
 }

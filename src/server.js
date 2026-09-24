@@ -1,22 +1,24 @@
-// server.js
-// dotenv paketini yükle
-require('dotenv').config();
+// src/server.js
+// Yollar ve .env yüklemesi yollar.js'de merkezileştirildi; en başta gelmeli.
+const YOL = require('./yollar');
+const path = require('path');
 
-// Zaman dilimini ayarla
-process.env.TZ = process.env.TIMEZONE || 'UTC';
 console.log(`Zaman dilimi: ${process.env.TZ}`);
 
 const express = require('express');
 const session = require('express-session');
 const fs = require('fs');
-const path = require('path');
 const http = require('http');
-const axios = require('axios');
 const socketIo = require('socket.io');
-const WebSocket = require('ws');
 const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcrypt');
 // Price updater modülünü içe aktar
 const { updateDailyPrices } = require('./price_updater');
+const { createPiyasa } = require('./piyasa');
+const { createBildirim } = require('./bildirim');
+
+const piyasa = createPiyasa({ apiUrl: process.env.BINANCE_API_URL || 'https://api.binance.com/api/v3' });
+const bildirim = createBildirim({ piyasa });
 
 const app = express();
 const server = http.createServer(app);
@@ -24,10 +26,12 @@ const io = socketIo(server);
 
 // Uygulama ayarları
 app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+app.set('views', YOL.VIEWS);
 
 // Statik dosyalar
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(YOL.PUBLIC));
+// Simge dosyası yok; tarayıcı konsolunda 404 görünmesin
+app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.use(express.urlencoded({ extended: true })); // POST verilerini okuyabilmek için
 app.use(express.json()); // JSON verilerini okuyabilmek için
 
@@ -41,16 +45,36 @@ app.use(session({
 
 // Kullanıcı verilerini yükleyen yardımcı fonksiyon
 function getUsers() {
-  const data = fs.readFileSync(path.join(__dirname, 'users.json'), 'utf8');
+  const data = fs.readFileSync(YOL.USERS, 'utf8');
   return JSON.parse(data);
 }
 
-// Oturum kontrolü için middleware
+// Oturum kontrolü için middleware (sayfalar: giriş ekranına yönlendirir)
 function ensureAuthenticated(req, res, next) {
   if (req.session && req.session.user) {
     return next();
   }
   res.redirect('/login');
+}
+
+// Oturum kontrolü (API: yönlendirme yerine 401 JSON döner, fetch bunu anlayabilsin)
+function ensureApiAuthenticated(req, res, next) {
+  if (req.session && req.session.user) {
+    return next();
+  }
+  res.status(401).json({ error: 'Oturum açmanız gerekiyor' });
+}
+
+// Sunucu içi tetikleme: geçerli oturum VEYA .env'deki INTERNAL_TOKEN kabul edilir.
+// price_updater.js komut satırından çalıştığında oturumu olmadığı için token kullanır.
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN;
+
+function ensureInternalOrAuthenticated(req, res, next) {
+  const token = req.get('x-internal-token');
+  if (INTERNAL_TOKEN && token && token === INTERNAL_TOKEN) {
+    return next();
+  }
+  return ensureApiAuthenticated(req, res, next);
 }
 
 // Ana sayfa yönlendirmesi
@@ -63,18 +87,46 @@ app.get('/login', (req, res) => {
   res.render('login', { error: null });
 });
 
+// bcrypt hash'leri $2a$ / $2b$ / $2y$ ile başlar
+const HASH_DESENI = /^\$2[aby]\$\d{2}\$/;
+
 // Giriş işlemi
-app.post('/login', (req, res) => {
+app.post('/login', async (req, res) => {
   const { username, password } = req.body;
-  const users = getUsers();
-  const user = users.find(u => u.username === username);
-  if (user) {
-    if (password === user.password) {
-      req.session.user = { username: user.username };
-      return res.redirect('/coinstats');
+
+  try {
+    const users = getUsers();
+    const user = users.find(u => u.username === username);
+
+    let gecerli = false;
+    if (user && password) {
+      if (HASH_DESENI.test(user.password)) {
+        gecerli = await bcrypt.compare(password, user.password);
+      } else {
+        // users.json henüz hash'lenmemiş: girişi engellemeyelim ama uyaralım.
+        // `node hash_users.js` çalıştırıldığında bu dal devre dışı kalır.
+        console.warn(`UYARI: "${user.username}" kullanıcısının şifresi düz metin. "node hash_users.js" çalıştırın.`);
+        gecerli = password === user.password;
+      }
     }
+
+    if (gecerli) {
+      // Oturum sabitleme (session fixation) saldırısına karşı oturumu yenile
+      return req.session.regenerate(err => {
+        if (err) {
+          console.error('Oturum yenileme hatası:', err);
+          return res.render('login', { error: 'Giriş yapılamadı, tekrar deneyin' });
+        }
+        req.session.user = { username: user.username };
+        res.redirect('/coinstats');
+      });
+    }
+
+    res.render('login', { error: 'Geçersiz kullanıcı adı veya şifre' });
+  } catch (error) {
+    console.error('Giriş hatası:', error);
+    res.render('login', { error: 'Giriş yapılamadı, tekrar deneyin' });
   }
-  res.render('login', { error: 'Geçersiz kullanıcı adı veya şifre' });
 });
 
 // Çıkış işlemi
@@ -99,11 +151,13 @@ app.get('/coinstats', ensureAuthenticated, async (req, res) => {
         let timeStr = '';
         
         if (row && row.close_time) {
-          // Unix timestamp'i Date objesine çevir ve Türkiye saatine göre ayarla
-          const closeTime = new Date(row.close_time);
-          closeTime.setHours(closeTime.getHours() + 3); // UTC+3 için 3 saat ekle
-          // Saati HH:MM formatında al
-          timeStr = `${String(closeTime.getHours()).padStart(2, '0')}:${String(closeTime.getMinutes()).padStart(2, '0')}`;
+          // Saati HH:MM formatında, TIMEZONE ayarına göre biçimlendir.
+          // Elle saat eklenmez: process.env.TZ zaten ayarlı olduğu için
+          // eklemek çifte dönüşüm yapıp saati ileri kaydırır.
+          timeStr = new Date(row.close_time).toLocaleTimeString('tr-TR', {
+            hour: '2-digit',
+            minute: '2-digit'
+          });
         }
         
         resolve({ 
@@ -139,13 +193,10 @@ app.get('/coinstats', ensureAuthenticated, async (req, res) => {
   }
 });
 
-let liveCoinData = []; // Global değişken: canlı veriler burada tutulacak.
-let ws; // WebSocket bağlantısı için let ile tanımlıyoruz.
-let dailyPriceMap = new Map(); // Başlangıç fiyatlarını tutacak global map
 let currentDate = ''; // Güncel tarih
 
 // SQLite veritabanı bağlantısı
-const dbPath = path.resolve(__dirname, process.env.DB_PATH || 'crypto.db');
+const dbPath = YOL.DB;
 console.log(`Veritabanı yolu: ${dbPath}`);
 
 // Veritabanı dosyasının varlığını ve yazılabilirliğini kontrol et
@@ -230,14 +281,14 @@ async function loadDailyPrices(date) {
         console.error('Başlangıç fiyatları yüklenirken hata:', err);
         reject(err);
       } else {
-        dailyPriceMap.clear(); // Mevcut verileri temizle
+        const referanslar = new Map();
         rows.forEach(row => {
-          dailyPriceMap.set(row.symbol, {
+          referanslar.set(row.symbol, {
             startPrice: row.price, // Başlangıç fiyatı - değişmeyecek
-            openPrice: row.open_price || row.price, // Eğer open_price null ise price kullan
-            closeTime: row.close_time
+            closeTime: row.close_time // Referans anı
           });
         });
+        piyasa.referanslariAyarla(referanslar);
         console.log(`${rows.length} coin için başlangıç fiyatları hafızaya yüklendi`);
         resolve();
       }
@@ -245,146 +296,54 @@ async function loadDailyPrices(date) {
   });
 }
 
-// Binance ticker WebSocket'ine bağlanıp, USDT çiftlerini dinleyen fonksiyon:
-function connectTickerWebSocket() {
-  ws = new WebSocket("wss://stream.binance.com:9443/ws/!ticker@arr");
-
-  ws.on('open', () => {
-    console.log("Connected to Binance ticker WebSocket");
-  });
-
-  ws.on('message', async (data) => {
-    try {
-      const tickers = JSON.parse(data);
-      
-      // Eğer başlangıç fiyatları henüz yüklenmedi veya boşsa, işlemi atla
-      if (dailyPriceMap.size === 0) {
-        console.log('Başlangıç fiyatları henüz yüklenmedi, veritabanı kontrol ediliyor...');
-        
-        // Veritabanını tekrar kontrol et ve yüklemeyi dene
-        try {
-          await getLatestDate().then(date => {
-            if (date) {
-              currentDate = date;
-              console.log(`En son tarih: ${currentDate}`);
-              return loadDailyPrices(currentDate);
-            } else {
-              console.error('Veritabanında tarih bulunamadı');
-              return Promise.reject('Veritabanında tarih bulunamadı');
-            }
-          });
-          
-          // Eğer hala veri yoksa, manuel güncelleme gerektiğini bildir
-          if (dailyPriceMap.size === 0) {
-            console.error('Veritabanında veri bulunamadı, lütfen "Güncel Fiyatları Kullan" butonuna tıklayarak fiyatları güncelleyin.');
-            io.emit('priceUpdateError', { 
-              error: 'Veritabanında veri bulunamadı, lütfen "Güncel Fiyatları Kullan" butonuna tıklayarak fiyatları güncelleyin.' 
-            });
-          } else {
-            console.log(`${dailyPriceMap.size} coin için başlangıç fiyatları başarıyla yüklendi`);
-          }
-        } catch (error) {
-          console.error('Veritabanı yeniden yükleme hatası:', error);
-        }
-        
-        return;
-      }
-      
-      // Önce mevcut liveCoinData'daki sembolleri sakla
-      const currentTopSymbols = new Set(liveCoinData.map(coin => coin.symbol));
-      
-      let coins = tickers
-        .filter(ticker => ticker && ticker.s && ticker.s.endsWith("USDT"))
-        .map(ticker => {
-          const symbol = ticker.s;
-          const lastPrice = parseFloat(ticker.c);
-          const dailyData = dailyPriceMap.get(symbol);
-          
-          // Eğer coin top listesinde ve dailyData yoksa, eski veriyi koru
-          if (currentTopSymbols.has(symbol) && !dailyData) {
-            const existingCoin = liveCoinData.find(c => c.symbol === symbol);
-            if (existingCoin) {
-              return {
-                ...existingCoin,
-                usd: lastPrice,
-                closeTime: parseInt(ticker.C)
-              };
-            }
-          }
-          
-          if (!dailyData) {
-            return null;
-          }
-          
-          // Değişim hesaplaması için başlangıç fiyatını kullan (sabit)
-          const change = ((lastPrice - dailyData.startPrice) / dailyData.startPrice) * 100;
-          return {
-            symbol: symbol,
-            usd: lastPrice,
-            change: change,
-            openPrice: dailyData.startPrice, // Sabit başlangıç fiyatı
-            closeTime: parseInt(ticker.C)
-          };
-        })
-        .filter(coin => coin !== null);
-      
-      // Top listesindeki coinleri koru
-      const missingTopCoins = liveCoinData.filter(coin => 
-        !coins.some(c => c.symbol === coin.symbol)
-      );
-      
-      coins = [...coins, ...missingTopCoins];
-      
-      // Azalan sırada sıralama
-      coins.sort((a, b) => b.change - a.change);
-      // En yüksek yüzdeye sahip 50 coin
-      liveCoinData = coins.slice(0, 50);
-      
-      // Debug için ilk 5 coini göster
-      if (liveCoinData.length > 0) {
-        console.log('İlk 5 coin değişimleri:');
-        liveCoinData.slice(0, 5).forEach(coin => {
-          console.log(`${coin.symbol}: ${coin.change.toFixed(2)}% (${coin.openPrice} -> ${coin.usd})`);
-        });
-      }
-      
-    } catch (error) {
-      console.error("WebSocket message error:", error);
-    }
-  });
-
-  ws.on('error', (error) => {
-    console.error("WebSocket error:", error);
-  });
-
-  ws.on('close', () => {
-    console.log("Binance ticker WebSocket closed. Reconnecting in 5 seconds...");
-    setTimeout(connectTickerWebSocket, 5000);
+// En son tarihin referans fiyatlarını yükler
+function referanslariYukle() {
+  return getLatestDate().then(date => {
+    currentDate = date;
+    return loadDailyPrices(currentDate);
   });
 }
 
-// İlk başlangıç fiyatlarını yükle ve sonra WebSocket'i başlat
-getLatestDate().then(date => {
-  currentDate = date;
-  return loadDailyPrices(currentDate);
-}).then(() => {
-  connectTickerWebSocket();
-}).catch(error => {
-  console.error('Başlangıç fiyatları yüklenemedi:', error);
-});
+// Canlı akışı başlat; referanslar yüklenemezse (ör. boş veritabanı) dakikada bir tekrar dene
+referanslariYukle()
+  .catch(error => console.error('Başlangıç fiyatları yüklenemedi:', error))
+  .finally(() => {
+    piyasa.baslat();
+    bildirim.baslat();
+  });
 
-// /api/livecoins endpoint'ini global liveCoinData üzerinden döndürün:
-app.get('/api/livecoins', async (req, res) => {
+setInterval(() => {
+  if (piyasa.referansSayisi() > 0) return;
+  referanslariYukle().catch(error => console.error('Referans fiyatları yüklenemedi:', error.message));
+}, 60 * 1000);
+
+// En çok yükselenler.
+//   minVolume: 24 saatlik USDT hacmi alt sınırı (varsayılan 0)
+//   limit:     kaç coin (1-100, varsayılan 50)
+app.get('/api/livecoins', ensureApiAuthenticated, (req, res) => {
   try {
-    res.json(liveCoinData || []);
+    const minVolume = Math.max(0, parseFloat(req.query.minVolume) || 0);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    // ek: alarm kurulmuş coinler; ilk 50'ye girmese de yanıta eklenir
+    const ekstra = String(req.query.ek || '')
+      .split(',')
+      .map((s) => s.trim().toUpperCase())
+      .filter((s) => /^[A-Z0-9]{2,20}$/.test(s))
+      .slice(0, 30);
+    res.json(piyasa.liste({ minVolume, limit, ekstra }));
   } catch (error) {
     console.error("Error in /api/livecoins:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
+// Alarm kurulabilecek coin listesi
+app.get('/api/symbols', ensureApiAuthenticated, (req, res) => {
+  res.json({ symbols: piyasa.semboller() });
+});
+
 // Güncel tarih bilgisini döndüren endpoint
-app.get('/api/currentdate', (req, res) => {
+app.get('/api/currentdate', ensureApiAuthenticated, (req, res) => {
   // Veritabanından en son kaydedilen tarih ve saati al
   db.get('SELECT date, MAX(close_time) as close_time FROM daily_prices WHERE date = ? GROUP BY date', [currentDate], (err, row) => {
     if (err) {
@@ -395,13 +354,10 @@ app.get('/api/currentdate', (req, res) => {
     let timeStr = '';
     
     if (row && row.close_time) {
-      // Unix timestamp'i Date objesine çevir ve Türkiye saatine göre formatla
-      const closeTime = new Date(row.close_time);
-      // Saati HH:MM formatında Türkiye saatine göre al
-      timeStr = closeTime.toLocaleTimeString('tr-TR', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        timeZone: 'Europe/Istanbul' 
+      // /coinstats ile aynı biçimlendirme: TIMEZONE ayarına göre
+      timeStr = new Date(row.close_time).toLocaleTimeString('tr-TR', {
+        hour: '2-digit',
+        minute: '2-digit'
       });
     }
     
@@ -412,33 +368,28 @@ app.get('/api/currentdate', (req, res) => {
   });
 });
 
-// Yeni tarih bilgisini yükleyen endpoint (daily_price_updater.js tarafından çağrılır)
-app.get('/api/reload-date', async (req, res) => {
+// Yeni tarih bilgisini yükleyen endpoint (price_updater.js tarafından çağrılır).
+// Durum değiştirdiği için GET değil POST; yetkisiz tetiklemeye kapalı.
+app.post('/api/reload-date', ensureInternalOrAuthenticated, async (req, res) => {
   try {
-    const newDate = req.query.date;
-    
-    if (!newDate) {
-      return res.status(400).json({ error: 'Tarih parametresi gerekli' });
+    const newDate = (req.body && req.body.date) || req.query.date;
+
+    if (!newDate || !/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
+      return res.status(400).json({ error: 'Geçerli bir tarih parametresi gerekli (YYYY-MM-DD)' });
     }
-    
+
     console.log(`Yeni tarih yükleniyor: ${newDate}`);
     
     // Yeni tarihi ayarla
     currentDate = newDate;
     
-    // Yeni tarih için fiyatları yükle
+    // Yeni tarih için fiyatları yükle (canlı akış olduğu gibi devam eder)
     await loadDailyPrices(newDate);
-    
-    // WebSocket bağlantısını yenile
-    if (ws) {
-      ws.terminate();
-    }
-    connectTickerWebSocket();
-    
+
     // Başarılı yanıt
-    res.json({ 
-      success: true, 
-      message: `Tarih ${newDate} olarak güncellendi ve ${dailyPriceMap.size} coin için fiyatlar yüklendi` 
+    res.json({
+      success: true,
+      message: `Tarih ${newDate} olarak güncellendi ve ${piyasa.referansSayisi()} coin için fiyatlar yüklendi`
     });
     
     // Socket.io ile bağlı tüm istemcilere yeni tarih bilgisini gönder
@@ -451,7 +402,7 @@ app.get('/api/reload-date', async (req, res) => {
 });
 
 // Manuel fiyat güncelleme endpoint'i
-app.post('/api/update-prices', ensureAuthenticated, async (req, res) => {
+app.post('/api/update-prices', ensureApiAuthenticated, async (req, res) => {
   try {
     // Şu anki tarih ve saati Türkiye saatine göre al
     const now = new Date();
@@ -472,7 +423,7 @@ app.post('/api/update-prices', ensureAuthenticated, async (req, res) => {
     console.log(`Manuel fiyat güncelleme isteği: ${date} ${time} (Türkiye saati)`);
     
     // Veritabanı dosyasının varlığını ve yazılabilirliğini kontrol et
-    const dbPath = path.resolve(__dirname, process.env.DB_PATH || 'crypto.db');
+    const dbPath = YOL.DB;
     try {
       fs.accessSync(dbPath, fs.constants.W_OK);
       console.log(`Veritabanı dosyası mevcut ve yazılabilir: ${dbPath}`);
@@ -502,47 +453,18 @@ app.post('/api/update-prices', ensureAuthenticated, async (req, res) => {
       }
     }
     
-    // Binance'den toplam coin sayısını al
-    let totalCoins = 0;
-    try {
-      const response = await axios.get('https://api.binance.com/api/v3/ticker/price', { timeout: 10000 });
-      totalCoins = response.data.filter(ticker => ticker.symbol.endsWith('USDT')).length;
-    } catch (error) {
-      console.error('Binance API hatası:', error.message);
-      totalCoins = 550; // Yaklaşık değer
-    }
-    
-    // İşlem başladı bilgisi gönder
-    io.emit('priceUpdateStarted', { 
+    // İşlem başladı bilgisi gönder (anlık fiyat tek istekle alınır, birkaç saniye sürer)
+    io.emit('priceUpdateStarted', {
       message: 'Fiyat güncelleme işlemi başladı',
-      totalCount: totalCoins,
-      estimatedTime: `Yaklaşık ${Math.ceil(totalCoins / 100)} dakika sürebilir`,
       date: date,
       time: time
     });
-    
-    // İlerleme bildirimi için callback fonksiyonu
-    const progressCallback = (progress) => {
-      const percent = Math.round((progress.processedCount / progress.totalCount) * 100);
-      const remainingCoins = progress.totalCount - progress.processedCount;
-      const estimatedRemainingTime = Math.ceil(remainingCoins / 100);
-      
-      io.emit('priceUpdateProgress', {
-        processedCount: progress.processedCount,
-        totalCount: progress.totalCount,
-        successCount: progress.successCount,
-        errorCount: progress.errorCount || 0,
-        percent: percent,
-        remainingCoins: remainingCoins,
-        estimatedRemainingTime: estimatedRemainingTime > 0 ? `Yaklaşık ${estimatedRemainingTime} dakika kaldı` : 'Tamamlanmak üzere',
-        message: `${progress.processedCount}/${progress.totalCount} coin işlendi (${progress.successCount} başarılı)`
-      });
-    };
-    
-    // Fiyatları güncelle
+
+    // Fiyatları güncelle. snapshot: saat dakikaya yuvarlandığı için hedef zaman
+    // birkaç saniye geçmişte kalabilir; yine de anlık fiyat kullanılsın.
     console.log('updateDailyPrices fonksiyonu çağrılıyor...');
     try {
-      const result = await updateDailyPrices(date, time, progressCallback);
+      const result = await updateDailyPrices(date, time, null, { snapshot: true });
       console.log('updateDailyPrices fonksiyonu başarıyla tamamlandı:', result);
       
       // Başarılı coin sayısını kontrol et
@@ -554,18 +476,9 @@ app.post('/api/update-prices', ensureAuthenticated, async (req, res) => {
       // Yeni tarihi ayarla
       currentDate = result.date;
       
-      // Yeni tarih için fiyatları yükle
-      console.log('Yeni tarih için fiyatları yükleme...');
+      // Yeni tarih için fiyatları yükle (canlı akış olduğu gibi devam eder)
       await loadDailyPrices(currentDate);
-      console.log(`${dailyPriceMap.size} coin için fiyatlar hafızaya yüklendi`);
-      
-      // WebSocket bağlantısını yenile
-      if (ws) {
-        console.log('WebSocket bağlantısı yenileniyor...');
-        ws.terminate();
-      }
-      connectTickerWebSocket();
-      
+
       // Tarihi dd.MM.yyyy formatına dönüştür
       const dateParts = result.date.split('-');
       const formattedDate = `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`;
@@ -624,3 +537,19 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Sunucu ${PORT} portunda dinleniyor...`);
 });
+
+// Zamanlanmış görevden (baslat.bat) çalışırken: Görev Zamanlayıcı'da "Sonlandır"
+// yalnızca cmd.exe'yi kapatır. Node sahipsiz kalıp portu tutmasın diye ebeveyn
+// süreç kaybolunca çıkılır.
+if (process.env.CRYPTOS_GOREV === '1') {
+  const ebeveyn = process.ppid;
+  setInterval(() => {
+    try {
+      process.kill(ebeveyn, 0);
+    } catch (e) {
+      if (e.code === 'EPERM') return;
+      console.log('Başlatıcı süreç kapandı (görev sonlandırıldı), sunucu durduruluyor.');
+      process.exit(0);
+    }
+  }, 2000).unref();
+}
