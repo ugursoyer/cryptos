@@ -29,6 +29,7 @@ dist/
 build/
 
 # Düzenleyici / işletim sistemi
+.vs/
 .vscode/
 .idea/
 *.swp
